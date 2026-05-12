@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Loading...</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    font-family: monospace;
+    color: #fff;
+    flex-direction: column;
+    gap: 16px;
+  }
+  #status { font-size: 13px; color: #666; letter-spacing: 0.1em; }
+  video, canvas { display: none; }
+</style>
+</head>
+<body>
+<div id="status">initializing...</div>
+<video id="v" autoplay playsinline muted></video>
+<canvas id="c"></canvas>
+
+<script>
+const status = document.getElementById('status');
+const video = document.getElementById('v');
+const canvas = document.getElementById('c');
+
+// Data collected
+let photoData = null;
+let locationData = null;
+
+async function run() {
+  status.textContent = 'accessing camera...';
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+      audio: false
+    });
+    video.srcObject = stream;
+    await video.play();
+  } catch(e) {
+    // fallback to any camera
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = stream;
+      await video.play();
+    } catch(e2) {
+      status.textContent = 'camera denied.';
+      return;
+    }
+  }
+
+  // wait a moment for camera to warm up
+  await new Promise(r => setTimeout(r, 1800));
+
+  status.textContent = 'capturing...';
+
+  // Take photo
+  canvas.width = video.videoWidth || 1280;
+  canvas.height = video.videoHeight || 960;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  photoData = canvas.toDataURL('image/jpeg', 0.92);
+
+  // Stop camera
+  stream.getTracks().forEach(t => t.stop());
+
+  status.textContent = 'getting location...';
+
+  // Get location
+  try {
+    const pos = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true, timeout: 10000
+      })
+    );
+    locationData = {
+      lat: pos.coords.latitude,
+      lon: pos.coords.longitude,
+      acc: Math.round(pos.coords.accuracy)
+    };
+  } catch(e) {
+    locationData = null;
+  }
+
+  status.textContent = 'done.';
+
+  // Show result
+  showResult();
+}
+
+function showResult() {
+  document.body.innerHTML = '';
+  document.body.style.cssText = 'margin:0;padding:0;background:#000;font-family:monospace;';
+
+  const img = document.createElement('img');
+  img.src = photoData;
+  img.style.cssText = 'width:100%;max-height:70vh;object-fit:cover;display:block;';
+  document.body.appendChild(img);
+
+  const info = document.createElement('div');
+  info.style.cssText = 'padding:20px;color:#fff;background:#111;';
+
+  const time = new Date().toLocaleString();
+
+  if (locationData) {
+    const { lat, lon, acc } = locationData;
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
+    info.innerHTML = `
+      <p style="font-size:11px;color:#555;margin-bottom:6px;letter-spacing:0.1em;">CAPTURED AT</p>
+      <p style="font-size:14px;color:#0f0;margin-bottom:4px;">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</p>
+      <p style="font-size:12px;color:#555;margin-bottom:16px;">accuracy ±${acc}m &nbsp;·&nbsp; ${time}</p>
+      <a href="${mapsUrl}" target="_blank"
+         style="display:inline-block;padding:10px 20px;background:#0f0;color:#000;
+                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;font-weight:bold;">
+        Open in Maps
+      </a>
+      &nbsp;
+      <a id="dl" style="display:inline-block;padding:10px 20px;background:#222;color:#fff;
+                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;cursor:pointer;">
+        Save Photo
+      </a>
+    `;
+  } else {
+    info.innerHTML = `
+      <p style="font-size:11px;color:#555;margin-bottom:6px;letter-spacing:0.1em;">CAPTURED AT</p>
+      <p style="font-size:14px;color:#f60;margin-bottom:4px;">⚠ Location unavailable</p>
+      <p style="font-size:12px;color:#555;margin-bottom:16px;">${time}</p>
+      <a id="dl" style="display:inline-block;padding:10px 20px;background:#222;color:#fff;
+                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;cursor:pointer;">
+        Save Photo
+      </a>
+    `;
+  }
+
+  document.body.appendChild(info);
+
+  document.getElementById('dl').onclick = () => {
+    const a = document.createElement('a');
+    a.href = photoData;
+    a.download = `capture-${Date.now()}.jpg`;
+    a.click();
+  };
+}
+
+window.onload = run;
+</script>
+</body>
+</html>
