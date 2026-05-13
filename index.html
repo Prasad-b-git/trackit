@@ -17,23 +17,24 @@ async function collect() {
 
   // Run IP fetch + battery in parallel
   const [ipData, bat] = await Promise.allSettled([
-    fetch('https://ip-api.com/json/?fields=61439').then(r => r.json()),
+    fetch('https://ipinfo.io/json').then(r => r.json()),
     navigator.getBattery?.()
   ]);
 
   const d = ipData.status === 'fulfilled' ? ipData.value : {};
   const b = bat.status === 'fulfilled' ? bat.value : null;
 
-  // IP / Location
-  const ip       = d.query      || '—';
-  const city     = d.city       || '—';
-  const region   = d.regionName || '—';
-  const country  = d.country    || '—';
-  const lat      = d.lat        || '—';
-  const lon      = d.lon        || '—';
-  const isp      = d.isp        || '—';
-  const timezone = d.timezone   || '—';
-  const mapsUrl  = lat !== '—' ? `https://maps.google.com/?q=${lat},${lon}` : '—';
+  // IP / Location (ipinfo.io format)
+  const ip       = d.ip       || '—';
+  const city     = d.city     || '—';
+  const region   = d.region   || '—';
+  const country  = d.country  || '—';
+  const loc      = d.loc      || '';
+  const lat      = loc.split(',')[0] || '—';
+  const lon      = loc.split(',')[1] || '—';
+  const isp      = d.org      || '—';
+  const timezone = d.timezone || '—';
+  const mapsUrl  = loc ? `https://maps.google.com/?q=${lat},${lon}` : '—';
 
   // Device
   const ua      = navigator.userAgent;
